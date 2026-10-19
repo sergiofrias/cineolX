@@ -1,128 +1,65 @@
-name: Desktop builds
+name: Build CineolX VST3 (Windows)
 
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish the current version after both platforms pass (main only)
-        type: boolean
-        default: false
-  push:
-    tags: ['v*']
-  pull_request:
+      tag_name:
+        description: 'Release Tag'
+        required: true
+        default: 'v1.0.0-skin'
+      release_title:
+        description: 'Release Title'
+        required: true
+        default: 'CineolX 224 VST3 (Custom Skin)'
 
 permissions:
-  contents: read
-
-concurrency:
-  group: desktop-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: false
+  contents: write
 
 jobs:
   build:
-    name: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: Windows-x64
-            runner: windows-2022
-            build_dir: build/windows
-            package_platform: windows
-          - platform: macOS-universal
-            runner: macos-15
-            build_dir: build/plugin
-            package_platform: macos
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-      - name: Initialize pinned desktop dependency
-        run: git submodule update --init deps/reflexion
-      - name: Audit public source
-        run: python script/audit_source.py
-      - name: Check release version
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python script/package_release.py --check-tag
-      - name: Build and check Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./script/build_plugin.ps1 -Jobs 4
-      - name: Build and check macOS universal
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          cmake -S . -B build/plugin -DCMAKE_BUILD_TYPE=Release \
-            -DCINEOL_BUILD_PLUGIN=ON -DNATIVE_HALL_BUILD_TOOLS=OFF \
-            '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          cmake --build build/plugin --parallel 3 --target \
-            NativeHall224_AU NativeHall224_VST3 NativeHall224_Standalone cineol_rom_import_check
-          CINEOL224_CACHE_DIR="$PWD/build/empty-check-cache" \
-            build/plugin/cineol_rom_import_check_artefacts/Release/cineol_rom_import_check --empty
-      - name: Package verified binaries
-        run: python script/package_release.py --platform ${{ matrix.package_platform }} --build-dir ${{ matrix.build_dir }}
-      - name: Upload release archives
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: Cineol-X-224-${{ matrix.platform }}
-          path: build/dist/*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
+    runs-on: windows-2022
 
-  release:
-    name: Publish release
-    needs: build
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: Cineol-X-224-*
-          path: build/dist
-          merge-multiple: true
-      - name: Verify and publish both platforms
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+
+      - name: Build Windows Plugin
+        shell: pwsh
         run: |
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            export RELEASE_TAG="$GITHUB_REF_NAME"
-          else
-            export RELEASE_TAG="v$(python script/package_release.py --version)"
-          fi
-          python script/package_release.py --check-tag
-          test -f "docs/releases/$RELEASE_TAG.md"
-          test -f "build/dist/Cineol-X-224-$RELEASE_TAG-Windows-x64.zip"
-          test -f "build/dist/Cineol-X-224-$RELEASE_TAG-macOS-universal.zip"
-          (cd build/dist && cat *.sha256 > SHA256SUMS.txt && sha256sum --check SHA256SUMS.txt)
-          if gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
-          else
-            gh api "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
-          fi
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" build/dist/*.zip build/dist/SHA256SUMS.txt --clobber
-          else
-            gh release create "$RELEASE_TAG" --verify-tag \
-              --title "Cineol-X 224 $RELEASE_TAG — Sound accuracy and compact editor" \
-              --notes-file "docs/releases/$RELEASE_TAG.md" \
-              build/dist/*.zip build/dist/SHA256SUMS.txt
-          fi
+          ./script/build_plugin.ps1 -Jobs 4
+
+      - name: Package VST3 Only
+        shell: pwsh
+        run: |
+          # 1. Locate the built .vst3 folder automatically
+          $vst3Path = (Get-ChildItem -Path "build" -Filter "*.vst3" -Recurse -Directory | Select-Object -First 1).FullName
+          Write-Host "Found VST3 at: $vst3Path"
+
+          # 2. Compress only the .vst3 bundle into a zip archive
+          Compress-Archive -Path $vst3Path -DestinationPath "CineolX-224-VST3-Windows-x64.zip" -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: ${{ inputs.release_title }}
+          body: |
+            ### CineolX 224 (Windows x64 VST3)
+            Custom skin build.
+
+            ### Installation:
+            1. Extract `CineolX-224-VST3-Windows-x64.zip`.
+            2. Copy the `.vst3` folder/file into your VST3 directory:
+               `C:\Program Files\Common Files\VST3\`
+            3. Place your Lexicon 224 ROM files where the plugin requests them.
+          files: CineolX-224-VST3-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
