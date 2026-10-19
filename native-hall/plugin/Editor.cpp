@@ -109,7 +109,7 @@ public:
         if(auto* parent=menuParent(options.getTargetComponent())) return parent;
         return options.getParentComponent();
     }
-    InstrumentLook():cap_(trimTransparentPadding(loadImage("fadercap_png"))),material_(loadImage("menumetal_png")) {
+    InstrumentLook():cap_(loadImage("fadercap_png")),material_(loadImage("menumetal_png")) {
         inactive_cap_=cap_.createCopy();
         juce::Image::BitmapData pixels(inactive_cap_,juce::Image::BitmapData::readWrite);
         for(int y=0;y<pixels.height;++y) for(int x=0;x<pixels.width;++x)
@@ -215,11 +215,15 @@ public:
             g.fillRect(cx-23-length,ty-thickness/2,length,thickness);
             g.fillRect(cx+23,ty-thickness/2,length,thickness);
         }
-        juce::Rectangle<float> cap(cx-26,pos-33,52,66);
-        juce::Path shadow;shadow.addRoundedRectangle(cap,3);
-        juce::DropShadow(juce::Colours::black.withAlpha(0.6f),9,{4,6}).drawForPath(g,shadow);
+        const float capWidth = 136.0f;
+        const float aspect = (cap_.isValid() && cap_.getHeight() > 0)
+            ? float(cap_.getWidth()) / float(cap_.getHeight())
+            : 1.92f;
+        const float capHeight = capWidth / aspect;
+        juce::Rectangle<float> cap(cx - capWidth * 0.5f, pos - capHeight * 0.5f, capWidth, capHeight);
+
         g.setOpacity(1.0f);
-        g.drawImage(s.isEnabled()?cap_:inactive_cap_,cap,juce::RectanglePlacement::stretchToFit);
+        g.drawImage(s.isEnabled() ? cap_ : inactive_cap_, cap, juce::RectanglePlacement::centred);
     }
     void drawComboBox(juce::Graphics& g,int width,int height,bool down,int,int,int,int,juce::ComboBox& c) override {
         auto r=juce::Rectangle<float>(1,1,float(width-2),float(height-2));
