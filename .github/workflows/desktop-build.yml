@@ -20,11 +20,11 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout repository and submodules
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
+
+      - name: Initialize desktop dependency
+        run: git submodule update --init deps/reflexion
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -57,9 +57,9 @@ jobs:
 
             ### Installation:
             1. Extract `CineolX-224-VST3-Windows-x64.zip`.
-            2. Copy the `.vst3` folder/file into your VST3 directory:
+            2. Copy the `.vst3` folder into your VST3 directory:
                `C:\Program Files\Common Files\VST3\`
-            3. Place your Lexicon 224 ROM files where the plugin requests them.
+            3. Open your DAW and load your Lexicon 224 ROM files when prompted.
           files: CineolX-224-VST3-Windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
